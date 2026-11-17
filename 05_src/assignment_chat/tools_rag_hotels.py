@@ -18,6 +18,7 @@ import pandas as pd
 import chromadb
 from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
 from utils.clients import get_client
+from pathlib import Path
 
 sys.path.append('05_src/')
 
@@ -36,42 +37,58 @@ DOC_DIR = "05_src/assignment_chat/"
 COLLECTION_NAME = "hotel_reviews"
 CHROMA_URL = os.getenv("CHROMA_URL")
 
+print(os.getenv("OPENAI_API_KEY"))
+
 
 def load_full_source():
-    # Initialize the loader
-    loader = CSVLoader(file_path="../../05_src/assignment_chat/Hotel_Reviews.csv")
 
-    # Load documents (returns a list of Document objects)
-    docs = loader.load()
+    DATA_FILE = Path(__file__).resolve().parent / "Hotel_Reviews.csv"
+    df = pd.read_csv(DATA_FILE)
 
-    # Accessing data
-    print(docs[0].page_content)  # Contains string representation of the row
-    print(docs[0].metadata)      # Contains the source path and row index
+    df['city'] = df['Hotel_Address'].str.split().str[-2]
+    df['country'] = df['Hotel_Address'].str.split().str[-1]
+    df = df[df['country'] != 'Kingdom']
+    df = df[df['country'] != 'Austria'] 
+    df = df.drop(columns=['lat', 'lng', 'city', 'country'])
+    # print(df['country'].unique())
+    df.to_csv(Path(__file__).resolve().parent / 'hotels_reviews_partial.csv.gz', index=False, compression='gzip')
+    
+    # print(df.describe(include='all'))
+
+# load_full_source()
 
 def load_partial_source():
     # df = pd.read_csv("../../05_src/assignment_chat/Hotel_Reviews_selected_countries.csv.gz", compression="gzip")
-    df = pd.read_csv("assignment_chat/Hotel_Reviews_selected_countries.csv.gz", compression="gzip")
-    # df.head(1)
-    df.describe(include='all')
+    DATA_FILE = Path(__file__).resolve().parent / "hotels_reviews_partial.csv.gz"
+    df = pd.read_csv(DATA_FILE, compression="gzip")
+  
+    # df.describe(include='all')
 
-    hotel_source = df.sample(n=10)
+    hotel_source = df.sample(n=500)
+    # hotel_source = df
     hotel_source['city'] = hotel_source['Hotel_Address'].str.split().str[-2]
     hotel_source['country'] = hotel_source['Hotel_Address'].str.split().str[-1]
     hotel_source['days_since_review'] = (pd.to_datetime('today') - pd.to_datetime(hotel_source['Review_Date'])).dt.days
     hotel_source['combined_review'] = hotel_source['Positive_Review'].str.cat(hotel_source['Negative_Review'], sep=' ', na_rep='')
-    hotel_source = hotel_source.drop(columns=['lat', 'lng'])
-
-    # sample_10_rows.to_csv('../../05_src/assignment_chat/sample_10_rows.csv', index=False)
-    hotel_source.describe(include='all')
+    # hotel_source = hotel_source.drop(columns=['lat', 'lng'])
+    
+    # print(hotel_source.describe(include='all'))
 
     hotel_reviews_list = hotel_source['combined_review'].tolist()
-    # hotel_source['combined_review']
+    
     return hotel_source, hotel_reviews_list
+
+# load_partial_source()
 
 def setup_collection(chroma_url:str,
                      collection_name: str):
     # chroma_client = chromadb.HttpClient(host=chroma_url)
-    chroma_client = chromadb.PersistentClient(path="./my_chroma_db")
+    # chroma_client = chromadb.PersistentClient(path="./my_chroma_db")
+
+    DATA_FILE = Path(__file__).resolve().parent / "my_chroma_db"
+    chroma_client = chromadb.PersistentClient(path=DATA_FILE)
+
+    
     collections = chroma_client.list_collections()
     if collection_name in [col.name for col in collections]:
         chroma_client.delete_collection(name=collection_name)
@@ -91,7 +108,10 @@ def setup_collection(chroma_url:str,
     return collection
 
 def return_collection(chroma_url:str, collection_name:str):
-    chroma_client = chromadb.PersistentClient(path="./my_chroma_db")
+
+    DATA_FILE = Path(__file__).resolve().parent / "my_chroma_db"
+    chroma_client = chromadb.PersistentClient(path=DATA_FILE)
+    # chroma_client = chromadb.PersistentClient(path="./my_chroma_db")
     collections = chroma_client.list_collections()
 
     if collection_name in [col.name for col in collections]:
@@ -216,7 +236,7 @@ def query_hotels(query: str, top_n: int = 3) -> list[HotelReviewData]:
     collection = return_collection(chroma_url=CHROMA_URL, collection_name=COLLECTION_NAME)
     
     hotel_recommendations = generate_pydantic_response(
-        query, collection, top_n=3,
+        query, collection, top_n,
         # where_document = {'$contains': 'internet'},
         # where={'$and': [{'score': {'$gt': 5.0}}, {'days_since_review': {'$gte': 9000}}]},
     )

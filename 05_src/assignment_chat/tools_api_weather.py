@@ -13,7 +13,7 @@ load_dotenv("05_src/.secrets")
 
 
 WEATHER_API_KEY = os.getenv('WEATHER_API_KEY')
-print(f"WEATHER_API_KEY: {WEATHER_API_KEY}")
+
 
 @tool
 def get_current_weather_data(location: str, date: str = None):
